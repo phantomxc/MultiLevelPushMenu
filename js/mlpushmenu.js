@@ -68,7 +68,12 @@
 		}
 	}
 
+	// _.extend( mlPushMenu, Backbone.Events );
+
 	mlPushMenu.prototype = {
+
+		events : _.extend( {}, Backbone.Events ),
+
 		defaults : {
 			// overlap: there will be a gap between open levels
 			// cover: the open levels will be on top of any previous open level
@@ -76,7 +81,11 @@
 			// space between each overlaped level
 			levelSpacing : 40,
 			// classname for the element (if any) that when clicked closes the current level
-			backClass : 'mp-back'
+			backClass : 'mp-back',
+
+			// If we want a menu that doesn't move the page over but still gives the effect 
+			// on the menu itself
+			staticMenu : false
 		},
 		_init : function() {
 			// if menu is open or not
@@ -110,23 +119,25 @@
 				el.removeEventListener( self.eventtype, bodyClickFn );
 			};
 
-			// open (or close) the menu
-			this.trigger.addEventListener( this.eventtype, function( ev ) {
-				ev.stopPropagation();
-				ev.preventDefault();
-				if( self.open ) {
-					self._resetMenu();
-				}
-				else {
-					self._openMenu();
-					// the menu should close if clicking somewhere on the body (excluding clicks on the menu)
-					document.addEventListener( self.eventtype, function( ev ) {
-						if( self.open && !hasParent( ev.target, self.el.id ) ) {
-							bodyClickFn( this );
-						}
-					} );
-				}
-			} );
+			// open (or close) the menu if its not static
+			if ( !this.options.staticMenu ) {
+				this.trigger.addEventListener( this.eventtype, function( ev ) {
+					ev.stopPropagation();
+					ev.preventDefault();
+					if( self.open ) {
+						self._resetMenu();
+					}
+					else {
+						self._openMenu();
+						// the menu should close if clicking somewhere on the body (excluding clicks on the menu)
+						document.addEventListener( self.eventtype, function( ev ) {
+							if( self.open && !hasParent( ev.target, self.el.id ) ) {
+								bodyClickFn( this );
+							}
+						} );
+					}
+				} );
+			}
 
 			// opening a sub level menu
 			this.menuItems.forEach( function( el, i ) {
@@ -178,8 +189,10 @@
 			// move the main wrapper
 			var levelFactor = ( this.level - 1 ) * this.options.levelSpacing,
 				translateVal = this.options.type === 'overlap' ? this.el.offsetWidth + levelFactor : this.el.offsetWidth;
-			
-			this._setTransform( 'translate3d(' + translateVal + 'px,0,0)' );
+
+			if ( !this.options.staticMenu ) {
+				this._setTransform( 'translate3d(' + translateVal + 'px,0,0)' );
+			}
 
 			if( subLevel ) {
 				// reset transform for sublevel
@@ -194,27 +207,49 @@
 			}
 			// add class mp-pushed to main wrapper if opening the first time
 			if( this.level === 1 ) {
-				classie.add( this.wrapper, 'mp-pushed' );
+				if ( !this.options.staticMenu ) {
+					classie.add( this.wrapper, 'mp-pushed' );
+				}
 				this.open = true;
+				this.events.trigger( 'open' );
 			}
 			// add class mp-level-open to the opening level element
 			classie.add( subLevel || this.levels[0], 'mp-level-open' );
 		},
 		// close the menu
 		_resetMenu : function() {
-			this._setTransform('translate3d(0,0,0)');
 			this.level = 0;
-			// remove class mp-pushed from main wrapper
-			classie.remove( this.wrapper, 'mp-pushed' );
+			if ( !this.options.staticMenu ) {
+				this._setTransform('translate3d(0,0,0)');
+				// remove class mp-pushed from main wrapper
+				classie.remove( this.wrapper, 'mp-pushed' );
+				this.open = false;
+				this.events.trigger( 'close' );
+			}
 			this._toggleLevels();
-			this.open = false;
 		},
 		// close sub menus
 		_closeMenu : function() {
-			var translateVal = this.options.type === 'overlap' ? this.el.offsetWidth + ( this.level - 1 ) * this.options.levelSpacing : this.el.offsetWidth;
-			this._setTransform( 'translate3d(' + translateVal + 'px,0,0)' );
+			if ( !this.options.staticMenu ) {
+				var translateVal = this.options.type === 'overlap' ? this.el.offsetWidth + ( this.level - 1 ) * this.options.levelSpacing : this.el.offsetWidth;
+				this._setTransform( 'translate3d(' + translateVal + 'px,0,0)' );
+			}
 			this._toggleLevels();
 		},
+
+		_resetToFirstLevel : function () {
+			for( var i = 0, len = this.levels.length; i < len; ++i ) {
+				var levelEl = this.levels[i];
+				if( levelEl.getAttribute( 'data-level' ) >= 2 ) {
+					classie.remove( levelEl, 'mp-level-open' );
+					classie.remove( levelEl, 'mp-level-overlay' );
+				} else if ( levelEl.getAttribute( 'data-level' ) == 1 ) {
+					classie.remove( levelEl, 'mp-level-overlay' );
+				}
+			}
+			this.level = 1;
+		},
+
 		// translate the el
 		_setTransform : function( val, el ) {
 			el = el || this.wrapper;
